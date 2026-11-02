@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const GENERATED = path.resolve(ROOT, '..', 'respire-minimax-code');
-const HOOK = path.join(GENERATED, 'io.minimax.mcode', 'hooks', 'scripts', 'respire-hook.mjs');
+const HOOK = path.join(GENERATED, 'hooks', 'scripts', 'respire-hook.mjs');
 const VALIDATOR = path.join(ROOT, 'scripts', 'validate.mjs');
 const BUILDER = path.join(ROOT, 'scripts', 'build-minimax.mjs');
 const CHECK_ONLY = process.argv.includes('--check');
@@ -187,24 +187,53 @@ const adapter = fs.readFileSync(
 const generatedHook = fs.readFileSync(HOOK, 'utf8');
 check('hook script copied byte-for-byte', adapter === generatedHook);
 
-const inlineManifest = JSON.parse(
-  fs.readFileSync(path.join(GENERATED, '.claude-plugin', 'plugin.json'), 'utf8'),
+const v1Manifest = JSON.parse(
+  fs.readFileSync(path.join(GENERATED, '.minimax-plugin', 'plugin.json'), 'utf8'),
 );
 check('mcode package has no root plugin.json', !fs.existsSync(path.join(GENERATED, 'plugin.json')));
 check('mcode package has no root mcp.json', !fs.existsSync(path.join(GENERATED, 'mcp.json')));
 check(
-  'mcode manifest targets the generated name',
-  inlineManifest.name === 'respire-minimax-code',
+  'mcode package has no Claude compatibility layout',
+  !fs.existsSync(path.join(GENERATED, '.claude-plugin', 'plugin.json')),
 );
-const inlineArg = inlineManifest.mcpServers.respire.args.join(' ');
 check(
-  'mcode inline MCP uses ${CLAUDE_PLUGIN_ROOT}',
-  inlineArg.includes('${CLAUDE_PLUGIN_ROOT}/mcp/respire-mcp.mjs'),
+  'mcode V1 manifest targets the generated name',
+  v1Manifest.schemaVersion === 1 && v1Manifest.name === 'respire-minimax-code',
 );
-check('mcode inline MCP does not leak ${PLUGIN_ROOT}', !inlineArg.includes('${PLUGIN_ROOT}'));
+const iconBytes = fs.existsSync(path.join(GENERATED, 'icon.png'))
+  ? fs.readFileSync(path.join(GENERATED, 'icon.png'))
+  : Buffer.alloc(0);
+check(
+  'mcode V1 ships a PNG icon',
+  iconBytes.subarray(0, 8).toString('hex') === '89504e470d0a1a0a',
+);
+for (const rel of [
+  ...v1Manifest.mcpServers,
+  ...v1Manifest.skills,
+  ...(v1Manifest.hooks || []),
+]) {
+  check(`V1 reference exists: ${rel}`, fs.existsSync(path.join(GENERATED, rel)));
+}
+const mcpFile = JSON.parse(fs.readFileSync(path.join(GENERATED, 'respire.mcp.json'), 'utf8'));
+const mcpArg = mcpFile.mcpServers.respire.args.join(' ');
+check(
+  'mcode V1 MCP uses a package-relative bridge',
+  mcpArg === './mcp/respire-mcp.mjs',
+);
 
-const inlineHookArg = inlineManifest.hooks.SessionStart[0].hooks[0].args.join(' ');
-check('mcode inline hooks use ${CLAUDE_PLUGIN_ROOT}', inlineHookArg.includes('${CLAUDE_PLUGIN_ROOT}'));
+const hookFile = JSON.parse(
+  fs.readFileSync(path.join(GENERATED, 'hooks', 'respire-hooks.json'), 'utf8'),
+);
+const hookHandler = hookFile.hooks.SessionStart[0].hooks[0];
+check(
+  'mcode V1 hooks use $PLUGIN_ROOT',
+  hookHandler.command.includes('$PLUGIN_ROOT/hooks/scripts/respire-hook.mjs'),
+);
+check(
+  'mcode V1 hooks provide a Windows override',
+  hookHandler.commandWindows.includes('%PLUGIN_ROOT%\\hooks\\scripts\\respire-hook.mjs'),
+);
+check('mcode V1 hook timeout is 10 seconds', hookHandler.timeout === 10);
 check(
   'mcode package drops the legacy 0.3 hooks document',
   !fs.existsSync(path.join(GENERATED, 'io.minimax.mcode', 'hooks', 'hooks.json')),

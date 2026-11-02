@@ -47,6 +47,18 @@ const EVENTS = new Set([
   'SubagentStart',
   'SubagentStop',
 ]);
+const V1_CATEGORIES = new Set([
+  'Office',
+  'Studio',
+  'Design & Sites',
+  'Code',
+  'Business',
+  'Sales',
+  'Productivity',
+  'Science & Healthcare',
+  'Education',
+  'Other',
+]);
 let failed = false;
 
 function ok(message) {
@@ -229,8 +241,11 @@ if (mcp.value) {
     }
     if (!failed) ok('mcp.json (portable stdio/HTTP server config)');
   }
-} else if (!fs.existsSync(path.join(ROOT, '.claude-plugin', 'plugin.json'))) {
-  fail('missing mcp.json (and no .claude-plugin manifest to declare servers)');
+} else if (
+  !fs.existsSync(path.join(ROOT, '.claude-plugin', 'plugin.json')) &&
+  !fs.existsSync(path.join(ROOT, '.minimax-plugin', 'plugin.json'))
+) {
+  fail('missing mcp.json (and no client manifest to declare servers)');
 }
 
 // ------------------------------------------------------------------ skills
@@ -282,6 +297,142 @@ if (!fs.existsSync(skillsDir)) {
     if (!inside(skill.file)) fail(`skills/${skill.dir}/SKILL.md: escapes plugin root`);
   }
   if (!failed) ok(`skills/ (${skills.length} skill${skills.length === 1 ? '' : 's'})`);
+}
+
+// ---------------------------------------------- MiniMax official V1
+
+const v1Manifest = readJson('.minimax-plugin/plugin.json');
+let hasMinimaxV1 = false;
+let v1McpCount = 0;
+if (!v1Manifest.missing) {
+  const doc = v1Manifest.value;
+  if (!isRecord(doc)) fail('.minimax-plugin/plugin.json: top level must be object');
+  else {
+    hasMinimaxV1 = true;
+    for (const key of [
+      'schemaVersion',
+      'name',
+      'version',
+      'description',
+      'author',
+      'icon',
+      'category',
+      'exampleQueries',
+      'apps',
+      'mcpServers',
+      'skills',
+    ]) {
+      if (!(key in doc)) fail(`.minimax-plugin/plugin.json: missing ${key}`);
+    }
+    if (doc.schemaVersion !== 1) fail('.minimax-plugin/plugin.json: schemaVersion must be 1');
+    if (doc.name !== path.basename(ROOT)) {
+      fail(`.minimax-plugin/plugin.json: name ${doc.name} != directory ${path.basename(ROOT)}`);
+    }
+    if (!V1_CATEGORIES.has(doc.category)) fail('.minimax-plugin/plugin.json: invalid category');
+    if (
+      !isStringArray(doc.exampleQueries) ||
+      doc.exampleQueries.length < 1 ||
+      doc.exampleQueries.length > 3 ||
+      doc.exampleQueries.some((query) => !query.trim())
+    ) {
+      fail('.minimax-plugin/plugin.json: exampleQueries must be 1..3 non-empty strings');
+    }
+    if (!isStringArray(doc.apps)) fail('.minimax-plugin/plugin.json: apps must be string[]');
+    if (typeof doc.icon !== 'string' || !/\.(?:png|jpe?g|webp)$/i.test(doc.icon)) {
+      fail('.minimax-plugin/plugin.json: icon must be png/jpeg/webp');
+    } else {
+      checkContained('icon', doc.icon);
+    }
+
+    if (!isStringArray(doc.mcpServers) || !doc.mcpServers.length) {
+      fail('.minimax-plugin/plugin.json: mcpServers must be a non-empty string[]');
+    } else {
+      for (const rel of doc.mcpServers) {
+        if (!rel.endsWith('.mcp.json')) {
+          fail(`mcpServers ref must end with .mcp.json (${rel})`);
+          continue;
+        }
+        if (!checkContained('mcpServers', rel)) continue;
+        const value = JSON.parse(fs.readFileSync(path.join(ROOT, rel), 'utf8'));
+        if (!isRecord(value) || value.schemaVersion !== 1 || !isRecord(value.mcpServers)) {
+          fail(`${rel}: needs schemaVersion 1 and mcpServers object`);
+          continue;
+        }
+        for (const [name, server] of Object.entries(value.mcpServers)) {
+          validateServer(name, server, rel);
+          v1McpCount += 1;
+        }
+      }
+    }
+
+    if (!isStringArray(doc.skills) || !doc.skills.length) {
+      fail('.minimax-plugin/plugin.json: skills must be a non-empty string[]');
+    } else {
+      for (const rel of doc.skills) {
+        if (!/^skills\/[A-Za-z0-9._-]+\/SKILL\.md$/.test(rel)) {
+          fail(`skills ref must be skills/<name>/SKILL.md (${rel})`);
+          continue;
+        }
+        if (!checkContained('skills', rel)) continue;
+        const parsed = parseFrontmatter(fs.readFileSync(path.join(ROOT, rel), 'utf8'));
+        const dir = rel.split('/')[1];
+        if (parsed.error || parsed.fields.name !== dir) {
+          fail(`${rel}: frontmatter name must equal ${dir}`);
+        }
+      }
+    }
+
+    if (doc.hooks !== undefined) {
+      if (!isStringArray(doc.hooks)) fail('.minimax-plugin/plugin.json: hooks must be string[]');
+      else {
+        for (const rel of doc.hooks) {
+          if (!rel.endsWith('.json')) {
+            fail(`hooks ref must be JSON (${rel})`);
+            continue;
+          }
+          if (!checkContained('hooks', rel)) continue;
+          const value = JSON.parse(fs.readFileSync(path.join(ROOT, rel), 'utf8'));
+          if (!isRecord(value) || !isRecord(value.hooks)) {
+            fail(`${rel}: needs top-level hooks object`);
+            continue;
+          }
+          for (const [event, groups] of Object.entries(value.hooks)) {
+            if (!EVENTS.has(event)) fail(`${rel}: unsupported event ${event}`);
+            if (!Array.isArray(groups)) {
+              fail(`${rel}.${event}: must be array`);
+              continue;
+            }
+            for (const group of groups) {
+              if (!isRecord(group) || !Array.isArray(group.hooks)) {
+                fail(`${rel}.${event}: group needs hooks[]`);
+                continue;
+              }
+              for (const handler of group.hooks) {
+                if (!isRecord(handler)) {
+                  fail(`${rel}.${event}: handler must be object`);
+                  continue;
+                }
+                if (handler.type !== 'command') fail(`${rel}.${event}: only type=command`);
+                if (typeof handler.command !== 'string' || !handler.command.trim()) {
+                  fail(`${rel}.${event}: command required`);
+                }
+                if (
+                  handler.timeout !== undefined &&
+                  (!Number.isInteger(handler.timeout) || handler.timeout < 1 || handler.timeout > 10)
+                ) {
+                  fail(`${rel}.${event}: timeout must be 1..10 seconds`);
+                }
+                if (handler.commandWindows !== undefined && typeof handler.commandWindows !== 'string') {
+                  fail(`${rel}.${event}: commandWindows must be string`);
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    if (!failed) ok('.minimax-plugin/plugin.json (MiniMax Plugin V1)');
+  }
 }
 
 // ---------------------------------------------- MiniMax client extension
@@ -423,6 +574,7 @@ if (!legacyHooks.missing) {
 // hook/mcp script syntax
 for (const rel of [
   'io.minimax.mcode/hooks/scripts/respire-hook.mjs',
+  'hooks/scripts/respire-hook.mjs',
   'mcp/respire-mcp.mjs',
 ]) {
   const script = path.join(ROOT, rel);
@@ -432,10 +584,10 @@ for (const rel of [
   else fail(`${rel} syntax: ${check.stderr.split('\n')[0]}`);
 }
 
-if (!rootManifest && !hasCompatible) {
-  fail('missing plugin.json (and no .claude-plugin/plugin.json)');
+if (!rootManifest && !hasCompatible && !hasMinimaxV1) {
+  fail('missing plugin.json (and no client manifest)');
 }
-if (skillCount + portableMcpCount + inlineMcpCount === 0) {
+if (skillCount + portableMcpCount + inlineMcpCount + v1McpCount === 0) {
   fail('plugin exposes no Skill or MCP server');
 }
 

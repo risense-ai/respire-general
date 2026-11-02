@@ -14,8 +14,8 @@ Agent Plugins 1.0 只标准化 **skills + MCP**；hooks 属于客户端私有能
 3. Windows 上 npm 的 `rsrs.cmd` 不能直接 `spawn`（需要 cmd.exe 重新解析参数），适配层改为解析
    shim 里的 `cli.js`，用当前 Node 直接执行，避免 prompt 文本进入 cmd.exe 解析器；
 4. mcode 本地读取器**优先根 `plugin.json`**（便携 Agent Plugins），而便携读取器固定返回
-   `hooks: []`。根清单与 `.claude-plugin` 同时存在时 hooks 会被静默忽略（mcode 0.6.12 实测）。
-   因此生成物只发 `.claude-plugin`，成为 **0.4+ 专用包**。
+   `hooks: []`。根清单与客户端清单同时存在时 hooks 会被静默忽略（mcode 0.6.12 实测）。
+   因此生成物只发官方 `.minimax-plugin` V1，成为 **0.4+ 专用包**。
 
 ## 事件映射
 
@@ -45,7 +45,7 @@ Agent Plugins 1.0 只标准化 **skills + MCP**；hooks 属于客户端私有能
 
 1. `RESPITE_CONFIG`
 2. `$PLUGIN_DATA/respire.config.json`
-3. `$PLUGIN_ROOT/io.minimax.mcode/respire.config.json`
+3. `$PLUGIN_ROOT/respire.config.json`
 
 | 字段 | 默认 | 含义 |
 | --- | --- | --- |

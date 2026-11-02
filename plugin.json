@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "respire-general",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "respire (rsrs) local-first encrypted memory for any Agent Plugins capable agent: one portable skill plus a stdio MCP server, no host-specific hooks required.",
   "author": {
     "name": "risense-ai",

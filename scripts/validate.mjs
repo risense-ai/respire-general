@@ -91,13 +91,13 @@ function isStringArray(value) {
 // ---------------------------------------------------------------- manifest
 
 const manifest = readJson('plugin.json');
-if (manifest.missing) {
-  fail('missing plugin.json');
-} else if (manifest.value) {
+let rootManifest = null;
+if (manifest.value) {
   const doc = manifest.value;
   if (!isRecord(doc)) {
     fail('plugin.json: top level must be an object');
   } else {
+    rootManifest = doc;
     for (const key of Object.keys(doc)) {
       if (!MANIFEST_KEYS.has(key)) fail(`plugin.json: unknown top-level field ${key}`);
     }
@@ -213,9 +213,8 @@ function validateServer(name, server, label) {
 }
 
 const mcp = readJson('mcp.json');
-if (mcp.missing) {
-  fail('missing mcp.json');
-} else if (mcp.value) {
+let portableMcpCount = 0;
+if (mcp.value) {
   const doc = mcp.value;
   if (!isRecord(doc)) fail('mcp.json: top level must be object');
   else {
@@ -226,9 +225,12 @@ if (mcp.missing) {
     if (!isRecord(doc.mcpServers)) fail('mcp.json: mcpServers must be object');
     for (const [name, server] of Object.entries(doc.mcpServers || {})) {
       validateServer(name, server, 'mcp.json.mcpServers');
+      portableMcpCount += 1;
     }
     if (!failed) ok('mcp.json (portable stdio/HTTP server config)');
   }
+} else if (!fs.existsSync(path.join(ROOT, '.claude-plugin', 'plugin.json'))) {
+  fail('missing mcp.json (and no .claude-plugin manifest to declare servers)');
 }
 
 // ------------------------------------------------------------------ skills
@@ -251,6 +253,7 @@ function parseFrontmatter(text) {
 }
 
 const skillsDir = path.join(ROOT, 'skills');
+let skillCount = 0;
 if (!fs.existsSync(skillsDir)) {
   fail('missing skills/');
 } else if (!fs.statSync(skillsDir).isDirectory()) {
@@ -261,6 +264,7 @@ if (!fs.existsSync(skillsDir)) {
     .filter((entry) => entry.isDirectory())
     .map((entry) => ({ dir: entry.name, file: path.join(skillsDir, entry.name, 'SKILL.md') }))
     .filter((skill) => fs.existsSync(skill.file));
+  skillCount = skills.length;
   if (!skills.length) fail('skills/: no <name>/SKILL.md found');
   for (const skill of skills) {
     const text = fs.readFileSync(skill.file, 'utf8');
@@ -284,16 +288,20 @@ if (!fs.existsSync(skillsDir)) {
 
 const mcodeManifest = readJson('.claude-plugin/plugin.json');
 const legacyHooks = readJson('io.minimax.mcode/hooks/hooks.json');
+let hasCompatible = false;
+let inlineMcpCount = 0;
 
 if (!mcodeManifest.missing) {
   const doc = mcodeManifest.value;
   if (!isRecord(doc)) fail('.claude-plugin/plugin.json: top level must be object');
   else {
+    hasCompatible = true;
     if (typeof doc.name !== 'string' || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(doc.name)) {
       fail('.claude-plugin/plugin.json: invalid name');
     }
-    if (manifest.value && doc.name !== manifest.value.name) {
-      fail('.claude-plugin/plugin.json: name must match root plugin.json');
+    const expectedName = rootManifest ? rootManifest.name : path.basename(ROOT);
+    if (doc.name !== expectedName) {
+      fail(`.claude-plugin/plugin.json: name ${doc.name} must match ${expectedName}`);
     }
     if (doc.version !== undefined && typeof doc.version !== 'string') fail('.claude-plugin/plugin.json: version must be string');
     if (doc.hooks !== undefined) {
@@ -366,6 +374,7 @@ if (!mcodeManifest.missing) {
       else {
         for (const [name, server] of Object.entries(doc.mcpServers)) {
           validateServer(name, server, '.claude-plugin.mcpServers');
+          inlineMcpCount += 1;
         }
       }
     }
@@ -411,12 +420,23 @@ if (!legacyHooks.missing) {
   }
 }
 
-// hook script syntax
-const hookScript = path.join(ROOT, 'io.minimax.mcode', 'hooks', 'scripts', 'respire-hook.mjs');
-if (fs.existsSync(hookScript)) {
-  const check = spawnSync(process.execPath, ['--check', hookScript], { encoding: 'utf8' });
-  if (check.status === 0) ok('respire-hook.mjs syntax');
-  else fail(`respire-hook.mjs syntax: ${check.stderr.split('\n')[0]}`);
+// hook/mcp script syntax
+for (const rel of [
+  'io.minimax.mcode/hooks/scripts/respire-hook.mjs',
+  'mcp/respire-mcp.mjs',
+]) {
+  const script = path.join(ROOT, rel);
+  if (!fs.existsSync(script)) continue;
+  const check = spawnSync(process.execPath, ['--check', script], { encoding: 'utf8' });
+  if (check.status === 0) ok(`${rel} syntax`);
+  else fail(`${rel} syntax: ${check.stderr.split('\n')[0]}`);
+}
+
+if (!rootManifest && !hasCompatible) {
+  fail('missing plugin.json (and no .claude-plugin/plugin.json)');
+}
+if (skillCount + portableMcpCount + inlineMcpCount === 0) {
+  fail('plugin exposes no Skill or MCP server');
 }
 
 // required docs

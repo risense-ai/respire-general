@@ -7,12 +7,15 @@
 ## 为什么需要适配层
 
 Agent Plugins 1.0 只标准化 **skills + MCP**；hooks 属于客户端私有能力。MiniMax Code 的 hook 契约有
-三个硬约束，通用层无法表达：
+四个硬约束，通用层无法表达：
 
 1. 一个 handler 的 `timeout` 只能是 **1–10 秒**的整数，超过会被静默跳过；
 2. `Stop` 用 Claude 兼容的 `{"decision":"block","reason":…}` 让模型再跑一轮；
 3. Windows 上 npm 的 `rsrs.cmd` 不能直接 `spawn`（需要 cmd.exe 重新解析参数），适配层改为解析
-   shim 里的 `cli.js`，用当前 Node 直接执行，避免 prompt 文本进入 cmd.exe 解析器。
+   shim 里的 `cli.js`，用当前 Node 直接执行，避免 prompt 文本进入 cmd.exe 解析器；
+4. mcode 本地读取器**优先根 `plugin.json`**（便携 Agent Plugins），而便携读取器固定返回
+   `hooks: []`。根清单与 `.claude-plugin` 同时存在时 hooks 会被静默忽略（mcode 0.6.12 实测）。
+   因此生成物只发 `.claude-plugin`，成为 **0.4+ 专用包**。
 
 ## 事件映射
 

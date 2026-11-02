@@ -97,18 +97,22 @@ node scripts/build-minimax.mjs          # 生成 ../respire-minimax-code
 node scripts/build-minimax.mjs --check  # CI：确认生成物没有漂移
 ```
 
-生成器会原样复制 `skills/` 与 `mcp.json`，再补上 MiniMax Code 的双布局清单与 hook 脚本：
+生成器复用通用包的技能与 MCP 配置，产出 **mcode 0.4.0+ 专用**布局（不含根 `plugin.json`）：
 
 ```text
 respire-minimax-code/
-├── plugin.json                          # Agent Plugins 1.0（mcode 0.3.x + 注册表校验）
-├── mcp.json
-├── .claude-plugin/plugin.json           # mcode 0.4.0+，inline hooks
-├── io.minimax.mcode/hooks/hooks.json    # mcode 0.3.x
+├── .claude-plugin/plugin.json           # mcode 0.4+ 权威清单，inline hooks + mcpServers
 ├── io.minimax.mcode/hooks/scripts/respire-hook.mjs
 ├── mcp/respire-mcp.mjs                  # stdio 桥（解析引擎后交给 rsrs mcp）
 └── skills/respire/SKILL.md
 ```
+
+**为什么不发双布局**：mcode 本地读取器优先尝试根 `plugin.json`（便携 Agent Plugins），而便携读取器固定
+返回 `hooks: []`。两者同时存在时，0.4+ 会加载便携布局并静默忽略 hooks。0.4+ 专用包因此只保留
+`.claude-plugin`。代价是不支持 0.3.x；需要 0.3 时用通用包（无自动 hooks）。
+
+社区 Registry 目前要求根 `plugin.json`，所以更适合提交 `respire-general`；要进官方 Marketplace，
+需要另做 `.minimax-plugin` V1 清单并走官方审核。
 
 ## 验证
 

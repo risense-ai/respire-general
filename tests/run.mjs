@@ -187,13 +187,16 @@ const adapter = fs.readFileSync(
 const generatedHook = fs.readFileSync(HOOK, 'utf8');
 check('hook script copied byte-for-byte', adapter === generatedHook);
 
-const rootMcp = JSON.parse(fs.readFileSync(path.join(GENERATED, 'mcp.json'), 'utf8'));
 const inlineManifest = JSON.parse(
   fs.readFileSync(path.join(GENERATED, '.claude-plugin', 'plugin.json'), 'utf8'),
 );
-const rootArg = rootMcp.mcpServers.respire.args.join(' ');
+check('mcode package has no root plugin.json', !fs.existsSync(path.join(GENERATED, 'plugin.json')));
+check('mcode package has no root mcp.json', !fs.existsSync(path.join(GENERATED, 'mcp.json')));
+check(
+  'mcode manifest targets the generated name',
+  inlineManifest.name === 'respire-minimax-code',
+);
 const inlineArg = inlineManifest.mcpServers.respire.args.join(' ');
-check('portable MCP uses ${PLUGIN_ROOT}', rootArg.includes('${PLUGIN_ROOT}/mcp/respire-mcp.mjs'));
 check(
   'mcode inline MCP uses ${CLAUDE_PLUGIN_ROOT}',
   inlineArg.includes('${CLAUDE_PLUGIN_ROOT}/mcp/respire-mcp.mjs'),
@@ -201,12 +204,11 @@ check(
 check('mcode inline MCP does not leak ${PLUGIN_ROOT}', !inlineArg.includes('${PLUGIN_ROOT}'));
 
 const inlineHookArg = inlineManifest.hooks.SessionStart[0].hooks[0].args.join(' ');
-const legacyHooks = JSON.parse(
-  fs.readFileSync(path.join(GENERATED, 'io.minimax.mcode', 'hooks', 'hooks.json'), 'utf8'),
-);
-const legacyHookArg = legacyHooks.hooks.SessionStart[0].args.join(' ');
 check('mcode inline hooks use ${CLAUDE_PLUGIN_ROOT}', inlineHookArg.includes('${CLAUDE_PLUGIN_ROOT}'));
-check('mcode 0.3 hooks use ${PLUGIN_ROOT}', legacyHookArg.includes('${PLUGIN_ROOT}'));
+check(
+  'mcode package drops the legacy 0.3 hooks document',
+  !fs.existsSync(path.join(GENERATED, 'io.minimax.mcode', 'hooks', 'hooks.json')),
+);
 
 const bridge = path.join(GENERATED, 'mcp', 'respire-mcp.mjs');
 const bridgeRun = spawnSync(process.execPath, [bridge], {

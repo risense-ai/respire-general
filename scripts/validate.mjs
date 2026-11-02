@@ -576,6 +576,8 @@ for (const rel of [
   'io.minimax.mcode/hooks/scripts/respire-hook.mjs',
   'hooks/scripts/respire-hook.mjs',
   'mcp/respire-mcp.mjs',
+  'lib/inject.mjs',
+  'scripts/setup-inject.mjs',
 ]) {
   const script = path.join(ROOT, rel);
   if (!fs.existsSync(script)) continue;

@@ -17,7 +17,7 @@
  *   mcode's local reader tries a root `plugin.json` (portable Agent Plugins)
  *   before any client manifest, and the portable reader sets `hooks: []`
  *   unconditionally. Shipping both makes mcode 0.4+/0.6 load the portable one
- *   and silently ignore hooks. Verified against mcode 0.6.12.
+ *   and silently ignore hooks. Verified against mcode 0.6.12 / 0.7.4.
  *
  * Why not `.claude-plugin`:
  *   It works (also verified), but it is a Claude-compatible compatibility
@@ -51,6 +51,7 @@ const mcp = JSON.parse(fs.readFileSync(path.join(ROOT, 'mcp.json'), 'utf8'));
 const skill = fs.readFileSync(path.join(ROOT, 'skills', 'respire', 'SKILL.md'), 'utf8');
 const hook = fs.readFileSync(path.join(ROOT, 'adapters', 'minimax-code', 'respire-hook.mjs'), 'utf8');
 const mcpBridge = fs.readFileSync(path.join(ROOT, 'mcp', 'respire-mcp.mjs'), 'utf8');
+const injectLib = fs.readFileSync(path.join(ROOT, 'lib', 'inject.mjs'), 'utf8');
 const icon = fs.readFileSync(path.join(ROOT, 'adapters', 'minimax-code', 'icon.png'));
 const license = fs.readFileSync(path.join(ROOT, 'LICENSE'), 'utf8');
 
@@ -131,10 +132,10 @@ const readme = `# ${PLUGIN_NAME}
 
 ## 版本与 hooks 支持
 
-- **mcode 0.4.0+**：支持 V1 插件与 hook；本包在 **0.6.12** 上实测通过。
+- **mcode 0.4.0+**：支持 V1 插件与 hook；本包在 **0.6.12 / 0.7.4** 上实测通过。
 - **mcode 0.3.x**：旧版本线，只读根 \`plugin.json\` 的便携 Agent Plugins 布局；hooks 是实验性文档，
   本包不支持。按“只兼容有 hooks 的版本”的标准，0.3 不在目标内。
-- **当前版本**：npm \`@minimax-ai/code\` 最新为 0.6.12。
+- **当前版本**：npm \`@minimax-ai/code\` 最新为 0.7.4。
 - hooks 不是 MiniMax Code 缺失的能力；缺的是**便携布局**对 hooks 的支持。便携读取器固定返回
   \`hooks: []\`，所以不能把根清单和 V1/Compat 清单混在一起。
 
@@ -259,7 +260,7 @@ printf '%s' '{"hook_event_name":"UserPromptSubmit","prompt":"respire 记忆","se
   | node hooks/scripts/respire-hook.mjs UserPromptSubmit
 \`\`\`
 
-### 本地 mcode 冒烟测试（已验证 0.6.12）
+### 本地 mcode 冒烟测试（已验证 0.6.12 / 0.7.4）
 
 用隔离的 \`MINIMAX_DATA_DIR\` 和临时 npm 前缀，不碰全局安装：
 
@@ -274,6 +275,7 @@ printf '%s' '{"hook_event_name":"UserPromptSubmit","prompt":"respire 记忆","se
 ## 已知边界
 
 - **只支持 0.4.0+**：0.3 只读便携根清单，且 hooks 是实验性的；按“必须有 hooks”的标准不兼容。
+- **无 hook 场景请用 general**：\`respire-general\` 首次启动会用 \`rsrs inject\` 给支持的宿主写入规则；mcode 没有 inject target，仍用本包 hooks 或技能 + MCP。
 - **社区 Registry 的校验器要求根 \`plugin.json\`**：V1 包不会通过该注册表校验；官方 Marketplace
   才是 V1 的目标渠道。社区目录可投 \`respire-general\`（无自动 hooks）。
 - **官方 Marketplace 上架仍需审核**：catalog 成员资格、archive/digest、icon 字节校验由官方
@@ -301,6 +303,7 @@ const files = new Map([
   ['hooks/respire-hooks.json', `${JSON.stringify(hookFile, null, 2)}\n`],
   [HOOK_REL, hook],
   ['mcp/respire-mcp.mjs', mcpBridge],
+  ['lib/inject.mjs', injectLib],
   ['skills/respire/SKILL.md', skill],
   ['README.md', readme],
   ['LICENSE', license],

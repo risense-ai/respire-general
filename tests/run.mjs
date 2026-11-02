@@ -86,6 +86,17 @@ if (command === 'status') {
     const line = JSON.stringify({ jsonrpc: '2.0', method: 'echo', params: { data: chunk.toString() } }) + '\\n';
     process.stdout.write(line, () => process.exit(0));
   });
+} else if (command === 'inject') {
+  if (args.includes('--targets')) {
+    say({ status: 'ok', details: [
+      { id: 'claude', state: process.env.FAKE_INJECT_STATE || 'absent' },
+      { id: 'generic', state: process.env.FAKE_INJECT_STATE || 'absent' },
+      { id: 'codex', state: 'current' }
+    ] });
+  } else {
+    const target = args[args.indexOf('--id') + 1] || '';
+    say({ status: 'ok', summary: { target } });
+  }
 } else if (command === 'remember') {
   if (process.env.FAKE_STORE === 'pending') say({ status: 'pending', written: false, items: [{ name: 'old', value: '旧记忆：项目 A 用 npm' }] });
   else say({ status: 'ok', summary: { id: '1122334455667788' } });
@@ -244,7 +255,13 @@ const bridgeRun = spawnSync(process.execPath, [bridge], {
   input: 'ping\n',
   encoding: 'utf8',
   timeout: 15_000,
-  env: { ...process.env, RESPITE_BIN: shim, RESPITE_RSRS: '', RESPITE_CONFIG: '' },
+  env: {
+    ...process.env,
+    RESPITE_BIN: shim,
+    RESPITE_RSRS: '',
+    RESPITE_CONFIG: '',
+    RESPITE_INJECT_TARGET: 'none',
+  },
 });
 check(
   'MCP bridge resolves the shim and proxies stdio',
@@ -263,6 +280,113 @@ const noEngineEnv = {
   RESPITE_RSRS: '',
   RESPITE_CONFIG: '',
 };
+const setup = path.join(ROOT, 'scripts', 'setup-inject.mjs');
+function runSetup(name, args, env = {}, existingDir) {
+  const dir = existingDir || path.join(TMP, 'inject', safeName(name));
+  fs.mkdirSync(dir, { recursive: true });
+  fs.rmSync(path.join(dir, 'calls.log'), { force: true });
+  const result = spawnSync(process.execPath, [setup, ...args, '--json'], {
+    encoding: 'utf8',
+    timeout: 30_000,
+    env: {
+      ...process.env,
+      RESPITE_BIN: shim,
+      RESPITE_RSRS: '',
+      RESPITE_CONFIG: '',
+      RESPITE_DATA: dir,
+      FAKE_CALL_LOG: path.join(dir, 'calls.log'),
+      ...env,
+    },
+  });
+  let doc = {};
+  try {
+    doc = JSON.parse(result.stdout);
+  } catch {
+    /* asserted by caller */
+  }
+  return {
+    dir,
+    result,
+    doc,
+    calls: fs.existsSync(path.join(dir, 'calls.log'))
+      ? fs.readFileSync(path.join(dir, 'calls.log'), 'utf8').trim().split('\n').filter(Boolean)
+      : [],
+  };
+}
+
+let injectRun = runSetup('inject-first', ['--target', 'claude']);
+check(
+  'first-run inject runs when target is absent',
+  injectRun.doc.status === 'injected' &&
+    injectRun.calls.some((line) => line.includes('"--id"') && line.includes('"claude"')),
+  JSON.stringify(injectRun.doc),
+);
+check(
+  'first-run inject records state',
+  fs.existsSync(path.join(injectRun.dir, 'inject-state.json')),
+);
+
+injectRun = runSetup(
+  'inject-second',
+  ['--target', 'claude'],
+  { FAKE_INJECT_STATE: 'current' },
+  injectRun.dir,
+);
+check(
+  'later starts skip a current target',
+  injectRun.doc.status === 'skip' && !injectRun.calls.some((line) => line.includes('"--id"')),
+  JSON.stringify(injectRun.doc),
+);
+
+const injectCheck = runSetup('inject-check', ['--target', 'claude', '--check'], {
+  FAKE_INJECT_STATE: 'stale',
+});
+check(
+  '--check reports a stale target without writing',
+  injectCheck.doc.status === 'needed' &&
+    !injectCheck.calls.some((line) => line.includes('"--id"')),
+  JSON.stringify(injectCheck.doc),
+);
+
+const injectMc = runSetup('inject-mcode-skip', ['--target', 'auto'], {
+  MINIMAX_PLUGIN_ROOT: path.join(TMP, 'mcode'),
+});
+check(
+  'mcode is skipped because rsrs has no mcode inject target',
+  injectMc.doc.status === 'skip',
+  JSON.stringify(injectMc.doc),
+);
+
+const bridgeAutoDir = path.join(TMP, 'inject', 'bridge-auto');
+fs.mkdirSync(bridgeAutoDir, { recursive: true });
+const bridgeAuto = spawnSync(process.execPath, [bridge], {
+  input: 'ping\n',
+  encoding: 'utf8',
+  timeout: 15_000,
+  env: {
+    ...process.env,
+    RESPITE_BIN: shim,
+    RESPITE_RSRS: '',
+    RESPITE_CONFIG: '',
+    RESPITE_DATA: bridgeAutoDir,
+    PLUGIN_DATA: bridgeAutoDir,
+    RESPITE_INJECT_TARGET: 'claude',
+    FAKE_CALL_LOG: path.join(bridgeAutoDir, 'calls.log'),
+    FAKE_INJECT_STATE: 'absent',
+  },
+});
+const bridgeCalls = fs.existsSync(path.join(bridgeAutoDir, 'calls.log'))
+  ? fs.readFileSync(path.join(bridgeAutoDir, 'calls.log'), 'utf8')
+  : '';
+check(
+  'MCP bridge performs first-run inject before serving',
+  bridgeAuto.status === 0 &&
+    bridgeAuto.stdout.includes('ping') &&
+    bridgeCalls.includes('"--id"') &&
+    bridgeCalls.includes('"claude"'),
+  `${bridgeAuto.status} ${bridgeCalls.slice(0, 160)}`,
+);
+
 const bridgeMissing = spawnSync(process.execPath, [bridge], {
   input: '',
   encoding: 'utf8',

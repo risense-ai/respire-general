@@ -32,10 +32,10 @@ Agent Plugins 1.0 只标准化 **skills + MCP**；hooks 属于客户端私有能
 
 | 子进程 | 上限 | 说明 |
 | --- | --- | --- |
-| `rsrs recall` | 4.5s | 语义召回单次预算；超时转词面兜底 |
-| `rsrs diary --contains` | 整体 9s | 最多 3 个关键词，每个 ≤2.5s；只取 important |
-| `rsrs remember` | 9s | 判后即存；超时回执提示手动核实/补存 |
-| `rsrs status` | 6s | SessionStart 一次性探测，避免拖慢开会话 |
+| `rsrs recall` | 3.5s | 语义召回单次预算；超时转词面兜底 |
+| `rsrs diary --contains` | 整体 7.5s | 最多 3 个关键词，每个 ≤1.8s；只取 important |
+| `rsrs remember` | 8s | 判后即存；超时回执提示手动核实/补存 |
+| `rsrs status` | 5s | SessionStart 一次性探测，避免拖慢开会话 |
 
 整个 hook 进程必须 < 10s，因此不做任何重试；所有异常 → 空 stdout + `exit 0`。
 
@@ -58,7 +58,7 @@ Agent Plugins 1.0 只标准化 **skills + MCP**；hooks 属于客户端私有能
 | `enabled` | `true` | 总开关 |
 | `store_nudge_every` | `1` | Stop 节流：1=每轮、N=每 N 轮、0=关 |
 | `store_force` | `false` | `记：` 落库时加 `--force`（跳过判重，慢库上更可靠；会失去候选合并提示） |
-| `semantic_timeout_ms` | `4500` | 语义召回单次预算；超时后走词面兜底 |
+| `semantic_timeout_ms` | `3500` | 语义召回单次预算；超时后走词面兜底 |
 | `lexical_fallback` | `true` | 语义超时/失败时用 `rsrs diary --contains` 词面兜底（只用 important 条） |
 | `log` | `true` | `$PLUGIN_DATA/hook.log` 留痕 |
 | `skip_prefixes` | `[]` | 宿主内部提示白名单 |

@@ -51,6 +51,7 @@ const mcp = JSON.parse(fs.readFileSync(path.join(ROOT, 'mcp.json'), 'utf8'));
 const skill = fs.readFileSync(path.join(ROOT, 'skills', 'respire', 'SKILL.md'), 'utf8');
 const hook = fs.readFileSync(path.join(ROOT, 'adapters', 'minimax-code', 'respire-hook.mjs'), 'utf8');
 const mcpBridge = fs.readFileSync(path.join(ROOT, 'mcp', 'respire-mcp.mjs'), 'utf8');
+const injectLib = fs.readFileSync(path.join(ROOT, 'lib', 'inject.mjs'), 'utf8');
 const icon = fs.readFileSync(path.join(ROOT, 'adapters', 'minimax-code', 'icon.png'));
 const license = fs.readFileSync(path.join(ROOT, 'LICENSE'), 'utf8');
 
@@ -274,6 +275,7 @@ printf '%s' '{"hook_event_name":"UserPromptSubmit","prompt":"respire 记忆","se
 ## 已知边界
 
 - **只支持 0.4.0+**：0.3 只读便携根清单，且 hooks 是实验性的；按“必须有 hooks”的标准不兼容。
+- **无 hook 场景请用 general**：\`respire-general\` 首次启动会用 \`rsrs inject\` 给支持的宿主写入规则；mcode 没有 inject target，仍用本包 hooks 或技能 + MCP。
 - **社区 Registry 的校验器要求根 \`plugin.json\`**：V1 包不会通过该注册表校验；官方 Marketplace
   才是 V1 的目标渠道。社区目录可投 \`respire-general\`（无自动 hooks）。
 - **官方 Marketplace 上架仍需审核**：catalog 成员资格、archive/digest、icon 字节校验由官方
@@ -301,6 +303,7 @@ const files = new Map([
   ['hooks/respire-hooks.json', `${JSON.stringify(hookFile, null, 2)}\n`],
   [HOOK_REL, hook],
   ['mcp/respire-mcp.mjs', mcpBridge],
+  ['lib/inject.mjs', injectLib],
   ['skills/respire/SKILL.md', skill],
   ['README.md', readme],
   ['LICENSE', license],

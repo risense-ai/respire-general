@@ -88,6 +88,52 @@ qoder plugins install /abs/path/respire-general
 
 权限用 `RSRS_MCP_ALLOW` / `RSRS_MCP_DENY` 控制，规则见引擎文档 `respire-cli/docs/mcp-permissions.md`。
 
+## 无 hook 自动化：首次 inject
+
+没有 hook 能力的宿主，用 `rsrs inject` 把记忆规则分发到宿主的指令文件（`CLAUDE.md`、`AGENTS.md`、`MEMORY.md` 等）。
+它**不是**每轮 hook：写一次后，宿主每次启动会自动加载这些规则。
+
+### 手动执行（推荐先这样）
+
+```bash
+node scripts/setup-inject.mjs --target auto
+node scripts/setup-inject.mjs --target auto --check   # 只检查，不写
+node scripts/setup-inject.mjs --target generic        # 明确写 ~/AGENTS.md
+```
+
+逻辑：
+
+1. `rsrs inject --targets --json` 查询目标状态；
+2. `absent` / `stale` → 执行 `rsrs inject --id <target>`；
+3. 已经是 `current` → 跳过，不重复写；
+4. 结果记录到 `$PLUGIN_DATA/inject-state.json`。
+
+### MCP 启动时自动检查（可选）
+
+`mcp/respire-mcp.mjs` 在启动 `rsrs mcp` 前会调用同一套逻辑：
+
+- 默认 `auto_inject: true`；
+- 从环境变量自动识别宿主（Claude / Codex / OpenCode / Qwen / WorkBuddy / Doubao / Pi 等）；
+- 只有目标 `absent` / `stale` 才 inject，`current` 直接跳过；
+- **mcode 会被跳过**，因为 `rsrs inject` 没有 mcode target；
+- 可用配置关闭或指定目标：
+
+```json
+{
+  "auto_inject": false,
+  "inject_target": "claude"
+}
+```
+
+配置文件优先级与 hook 一致：`RESPITE_CONFIG` → `$PLUGIN_DATA/respire.config.json` → `$PLUGIN_ROOT/respire.config.json`。
+
+### 边界
+
+- Agent Plugins **没有安装后脚本**，所以不存在“安装时 inject”；最早只能在插件第一次启动 MCP 时检查。
+- `generic` 写的是 `~/AGENTS.md`；如果宿主只读项目根 `AGENTS.md`（例如 mcode），需要 `--target` 明确指定，或改用技能 + MCP / 启动器 `--append-system-prompt-file`。
+- mcode 没有 `rsrs inject` target，所以 mcode 的无 hook 方案是：通用包的技能 + MCP，或启动器注入 system prompt。
+- 自动 inject 会修改宿主指令文件；不需要时请设 `auto_inject: false`。
+
 ## 生成 MiniMax Code 适配包
 
 `respire-general` 是单一事实源。改完通用部分后：

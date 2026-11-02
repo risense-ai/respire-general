@@ -115,7 +115,7 @@ respire-minimax-code/
 `.minimax-plugin` V1。代价是不支持 0.3.x；需要 0.3 时用通用包（无自动 hooks）。
 
 V1 就是官方 Marketplace 的包格式；社区 Registry 的校验器仍要求根 `plugin.json`，更适合提交
-`respire-general`。V1 包在 mcode 0.6.12 上已实测：`LOCAL_MINIMAX` 识别、MCP 连接、三个 hook 全部执行。
+`respire-general`。V1 包在 mcode 0.6.12 / 0.7.4 上已实测：`LOCAL_MINIMAX` 识别、MCP 连接、三个 hook 全部执行。
 
 ## 验证
 
